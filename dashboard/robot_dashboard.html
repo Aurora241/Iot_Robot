@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>🚗 IoT Robot Dashboard</title>
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body { 
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0a0e27;
+      min-height: 100vh;
+      padding: 30px;
+      position: relative;
+      overflow-x: hidden;
+    }
+    
+    body::before {
+      content: '';
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: 
+        radial-gradient(circle at 20% 50%, rgba(120, 119, 198, 0.3) 0%, transparent 50%),
+        radial-gradient(circle at 80% 80%, rgba(74, 86, 226, 0.3) 0%, transparent 50%),
+        radial-gradient(circle at 40% 20%, rgba(99, 102, 241, 0.2) 0%, transparent 40%);
+      pointer-events: none;
+      animation: pulse 15s ease-in-out infinite;
+    }
+    
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.8; }
+    }
+    
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      position: relative;
+      z-index: 1;
+    }
+    
+    h2 {
+      text-align: center;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 40px;
+      font-size: 2.5em;
+      font-weight: 800;
+      letter-spacing: -1px;
+    }
+    
+    /* Glass Card Base */
+    .glass-card {
+      background: rgba(255, 255, 255, 0.05);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 24px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    }
+    
+    /* Status Cards at Top */
+    .status-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 24px;
+      margin-bottom: 40px;
+    }
+    
+    .status-card {
+      padding: 32px;
+      text-align: center;
+      transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+      position: relative;
+      overflow: hidden;
+    }
+    
+    .status-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 4px;
+      background: linear-gradient(90deg, transparent, currentColor, transparent);
+      animation: shimmer 2s infinite;
+    }
+    
+    @keyframes shimmer {
+      0% { transform: translateX(-100%); }
+      100% { transform: translateX(100%); }
+    }
+    
+    .status-card.connected {
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(5, 150, 105, 0.1) 100%);
+      border-color: rgba(16, 185, 129, 0.3);
+      color: #10b981;
+    }
+    
+    .status-card.disconnected {
+      background: linear-gradient(135deg, rgba(239, 68, 68, 0.1) 0%, rgba(220, 38, 38, 0.1) 100%);
+      border-color: rgba(239, 68, 68, 0.3);
+      color: #ef4444;
+    }
+    
+    .status-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 12px 48px rgba(0, 0, 0, 0.4);
+    }
+    
+    .status-icon {
+      font-size: 2.5em;
+      margin-bottom: 12px;
+      display: inline-block;
+      animation: float 3s ease-in-out infinite;
+    }
+    
+    @keyframes float {
+      0%, 100% { transform: translateY(0px); }
+      50% { transform: translateY(-10px); }
+    }
+    
+    .status-card h3 {
+      font-size: 0.9em;
+      margin-bottom: 12px;
+      opacity: 0.7;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      font-weight: 600;
+    }
+    
+    .status-card .status-text {
+      font-size: 1.4em;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+    }
+    
+    /* Main Content */
+    .main-content {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 32px;
+      align-items: start;
+    }
+    
+    /* Robot Status Card */
+    .robot-status {
+      padding: 36px;
+      animation: fadeInLeft 0.6s ease-out;
+    }
+    
+    @keyframes fadeInLeft {
+      from {
+        opacity: 0;
+        transform: translateX(-30px);
+      }
+      to {
+        opacity: 1;
+        transform: translateX(0);
+      }
+    }
+    
+    .robot-status h3 {
+      text-align: center;
+      margin-bottom: 32px;
+      font-size: 1.6em;
+      font-weight: 700;
+      background: linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    
+    .info-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 20px;
+      margin: 12px 0;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 12px;
+      transition: all 0.3s ease;
+      color: #e2e8f0;
+    }
+    
+    .info-row:hover {
+      background: rgba(255, 255, 255, 0.06);
+      border-color: rgba(99, 102, 241, 0.3);
+      transform: translateX(4px);
+    }
+    
+    .info-row span:first-child {
+      font-weight: 600;
+      opacity: 0.7;
+      font-size: 0.95em;
+    }
+    
+    .info-row span:last-child {
+      font-weight: 700;
+      font-size: 1.1em;
+      color: #60a5fa;
+    }
+    
+    .motors-section {
+      margin-top: 32px;
+      padding-top: 32px;
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    
+    .motors-section h4 {
+      text-align: center;
+      margin-bottom: 20px;
+      font-size: 1.2em;
+      color: #94a3b8;
+      font-weight: 600;
+      letter-spacing: 1px;
+    }
+    
+    /* Control Panel */
+    .control-panel {
+      padding: 36px;
+      animation: fadeInRight 0.6s ease-out;
+    }
+    
+    @keyframes fadeInRight {
+      from {
+        opacity: 0;
+        transform: translateX(30px);
+      }
+      to {
+        opacity: 1;
+        transform: translateX(0);
+      }
+    }
+    
+    .control-panel h3 {
+      text-align: center;
+      margin-bottom: 40px;
+      font-size: 1.6em;
+      font-weight: 700;
+      background: linear-gradient(135deg, #a78bfa 0%, #8b5cf6 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    
+    .direction-controls {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      grid-template-rows: repeat(3, 1fr);
+      gap: 16px;
+      max-width: 320px;
+      margin: 0 auto 40px;
+    }
+    
+    .control-btn {
+      width: 90px;
+      height: 90px;
+      border: none;
+      border-radius: 20px;
+      background: rgba(255, 255, 255, 0.05);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2.2em;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      color: #60a5fa;
+      position: relative;
+      overflow: hidden;
+    }
+    
+    .control-btn::before {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 0;
+      height: 0;
+      border-radius: 50%;
+      background: rgba(99, 102, 241, 0.5);
+      transform: translate(-50%, -50%);
+      transition: width 0.4s, height 0.4s;
+    }
+    
+    .control-btn:hover {
+      transform: translateY(-4px) scale(1.05);
+      box-shadow: 0 12px 32px rgba(99, 102, 241, 0.4);
+      border-color: rgba(99, 102, 241, 0.5);
+      background: rgba(99, 102, 241, 0.1);
+    }
+    
+    .control-btn:active {
+      transform: scale(0.95);
+      background: linear-gradient(135deg, rgba(99, 102, 241, 0.8), rgba(139, 92, 246, 0.8));
+      border-color: #6366f1;
+      color: white;
+    }
+    
+    .control-btn:active::before {
+      width: 100%;
+      height: 100%;
+    }
+    
+    .control-btn.forward { grid-column: 2; grid-row: 1; }
+    .control-btn.left { grid-column: 1; grid-row: 2; }
+    .control-btn.stop { 
+      grid-column: 2; 
+      grid-row: 2;
+      background: rgba(239, 68, 68, 0.1);
+      color: #ef4444;
+      border-color: rgba(239, 68, 68, 0.3);
+    }
+    .control-btn.right { grid-column: 3; grid-row: 2; }
+    .control-btn.backward { grid-column: 2; grid-row: 3; }
+    
+    .control-btn.stop:hover {
+      background: rgba(239, 68, 68, 0.2);
+      border-color: rgba(239, 68, 68, 0.5);
+      box-shadow: 0 12px 32px rgba(239, 68, 68, 0.4);
+    }
+    
+    .control-btn.stop:active {
+      background: linear-gradient(135deg, rgba(239, 68, 68, 0.8), rgba(220, 38, 38, 0.8));
+      border-color: #ef4444;
+    }
+    
+    .led-control {
+      text-align: center;
+    }
+    
+    .led-btn {
+      padding: 18px 48px;
+      border: none;
+      border-radius: 16px;
+      background: linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%);
+      color: white;
+      font-size: 1.1em;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: 0 8px 24px rgba(139, 92, 246, 0.4);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      letter-spacing: 0.5px;
+    }
+    
+    .led-btn:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 12px 32px rgba(139, 92, 246, 0.6);
+    }
+    
+    .led-btn:active {
+      transform: scale(0.96);
+      box-shadow: 0 4px 16px rgba(139, 92, 246, 0.4);
+    }
+    
+    .arrow {
+      font-style: normal;
+      filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
+    }
+    
+    /* Responsive */
+    @media (max-width: 1024px) {
+      .main-content {
+        grid-template-columns: 1fr;
+      }
+    }
+    
+    @media (max-width: 768px) {
+      body {
+        padding: 20px;
+      }
+      
+      h2 {
+        font-size: 2em;
+      }
+      
+      .status-row {
+        grid-template-columns: 1fr;
+      }
+      
+      .control-btn {
+        width: 70px;
+        height: 70px;
+        font-size: 1.8em;
+      }
+      
+      .direction-controls {
+        max-width: 260px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <h2>🚗 IoT Robot Dashboard</h2>
+
+    <!-- Status Cards -->
+    <div class="status-row">
+      <div class="status-card glass-card disconnected" id="mqtt-card">
+        <div class="status-icon">📡</div>
+        <h3>MQTT Connection</h3>
+        <div class="status-text" id="mqtt-status">Disconnected</div>
+      </div>
+      
+      <div class="status-card glass-card disconnected" id="device-card">
+        <div class="status-icon">🤖</div>
+        <h3>Device Status</h3>
+        <div class="status-text" id="device-status">Offline</div>
+      </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+      <!-- Robot Status -->
+      <div class="robot-status glass-card">
+        <h3>📊 Robot Status</h3>
+        
+        <div class="info-row">
+          <span>Điện áp pin</span>
+          <span id="voltage">--</span>
+        </div>
+        
+        <div class="info-row">
+          <span>LED Status</span>
+          <span id="led-status">--</span>
+        </div>
+        
+        <div class="info-row">
+          <span>Hướng xe</span>
+          <span id="direction">--</span>
+        </div>
+        
+        <div class="motors-section">
+          <h4>⚙️ Động cơ</h4>
+          <div class="info-row">
+            <span>Motor 1</span>
+            <span id="m1">--</span>
+          </div>
+          <div class="info-row">
+            <span>Motor 2</span>
+            <span id="m2">--</span>
+          </div>
+          <div class="info-row">
+            <span>Motor 3</span>
+            <span id="m3">--</span>
+          </div>
+          <div class="info-row">
+            <span>Motor 4</span>
+            <span id="m4">--</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Control Panel -->
+      <div class="control-panel glass-card">
+        <h3>🎮 Điều khiển</h3>
+        
+        <div class="direction-controls">
+          <button class="control-btn forward" onclick="sendCmd('forward')">
+            <span class="arrow">▲</span>
+          </button>
+          
+          <button class="control-btn left" onclick="sendCmd('left')">
+            <span class="arrow">◄</span>
+          </button>
+          
+          <button class="control-btn stop" onclick="sendCmd('stop')">
+            <span class="arrow">■</span>
+          </button>
+          
+          <button class="control-btn right" onclick="sendCmd('right')">
+            <span class="arrow">►</span>
+          </button>
+          
+          <button class="control-btn backward" onclick="sendCmd('backward')">
+            <span class="arrow">▼</span>
+          </button>
+        </div>
+        
+        <div class="led-control">
+          <button class="led-btn" onclick="sendCmd('toggle_led')">
+            💡 Toggle LED
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const broker = "wss://broker.emqx.io:8084/mqtt";
+    const topicCmd = "/iot/robot/command";
+    const topicState = "/iot/robot/state";
+
+    const client = mqtt.connect(broker, { 
+      clientId: "web_dashboard_" + Math.random().toString(16).substr(2, 8) 
+    });
+
+    const mqttCard = document.getElementById("mqtt-card");
+    const mqttStatus = document.getElementById("mqtt-status");
+    const deviceCard = document.getElementById("device-card");
+    const deviceStatus = document.getElementById("device-status");
+
+    // === MQTT Events ===
+    client.on("connect", () => {
+      mqttStatus.textContent = "Connected";
+      mqttCard.className = "status-card glass-card connected";
+      client.subscribe(topicState);
+      console.log("✅ MQTT connected, subscribed to", topicState);
+    });
+
+    client.on("error", (err) => {
+      mqttStatus.textContent = "Error";
+      mqttCard.className = "status-card glass-card disconnected";
+      console.error("MQTT Error:", err);
+    });
+
+    client.on("reconnect", () => {
+      mqttStatus.textContent = "Reconnecting...";
+      mqttCard.className = "status-card glass-card disconnected";
+    });
+
+    client.on("message", (topic, message) => {
+      if (topic === topicState) {
+        const data = JSON.parse(message.toString());
+        console.log("📩 State:", data);
+        updateDashboard(data);
+      }
+    });
+
+    // === Functions ===
+    function sendCmd(cmd) {
+      const payload = JSON.stringify({ cmd });
+      client.publish(topicCmd, payload);
+      console.log("📤 Sent:", payload);
+    }
+
+    function updateDashboard(data) {
+      document.getElementById("voltage").textContent = data.voltage ? data.voltage + " V" : "--";
+      document.getElementById("led-status").textContent = data.led ? "ON" : "OFF";
+      document.getElementById("direction").textContent = data.direction ?? "--";
+      document.getElementById("m1").textContent = data.m1 ? "ON" : "OFF";
+      document.getElementById("m2").textContent = data.m2 ? "ON" : "OFF";
+      document.getElementById("m3").textContent = data.m3 ? "ON" : "OFF";
+      document.getElementById("m4").textContent = data.m4 ? "ON" : "OFF";
+      
+      deviceStatus.textContent = "Online";
+      deviceCard.className = "status-card glass-card connected";
+    }
+  </script>
+</body>
+</html>

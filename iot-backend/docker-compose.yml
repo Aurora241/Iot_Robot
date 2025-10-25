@@ -1,0 +1,36 @@
+version: "3.8"
+
+services:
+  pg_db_new:
+    image: postgres:16
+    container_name: pg_db_new
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 123456
+      POSTGRES_DB: iotdb
+    ports:
+      - "5434:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  adminer:
+    image: adminer
+    container_name: adminer_ui
+    restart: always
+    ports:
+      - "8090:8080"
+
+  backend:
+    build: .
+    container_name: iot_backend
+    restart: always
+    env_file:
+      - .env
+    depends_on:
+      - pg_db_new
+    ports:
+      - "3000:3000"
+
+volumes:
+  pgdata:
